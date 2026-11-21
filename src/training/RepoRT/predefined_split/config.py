@@ -141,6 +141,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Initial learning rate for ReduceLROnPlateau.",
     )
     training.add_argument(
+        "--pretrained-weights",
+        type=Path,
+        default=(
+            Path(os.environ["CHROMAGRT_PRETRAINED_WEIGHTS"])
+            if os.environ.get("CHROMAGRT_PRETRAINED_WEIGHTS")
+            else None
+        ),
+        help=(
+            "Transfer learning: checkpoint (model.pt) to initialise the model from. "
+            "A results root holding fold_N/<timestamp>/model.pt is also accepted, "
+            "in which case the fold with the lowest validation MAE is selected."
+        ),
+    )
+    training.add_argument(
+        "--lr-pretrained",
+        type=float,
+        default=_env_float("CHROMAGRT_LR_PRETRAINED", defaults["lr_pretrained"]),
+        help=(
+            "Transfer learning: learning rate for the tensors loaded from "
+            "--pretrained-weights. Defaults to --lr when not given."
+        ),
+    )
+    training.add_argument(
         "--plateau-factor",
         type=float,
         default=_env_float("CHROMAGRT_PLATEAU_FACTOR", defaults["plateau_factor"]),

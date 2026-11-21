@@ -24,6 +24,12 @@ DEFAULT_CHROMAGRT_CONFIG = {
     "tanaka_block_dropout": 0.0,
 
     "lr": 5e-5,
+    # Transfer learning: learning rate for the tensors that were loaded from a
+    # previous run's checkpoint. None means "use lr", i.e. no separate rate.
+    "lr_pretrained": None,
+    # Transfer learning: checkpoint (or results root) to initialise the model
+    # from. None means the model is trained from scratch.
+    "pretrained_weights": None,
     "lr_scheduler": "ReduceLROnPlateau",
     "plateau_factor": 0.5,
     "plateau_patience": 10,
