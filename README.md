@@ -107,6 +107,40 @@ placed under `<data-root>/RepoRT/raw_data` and
 `<data-root>/RepoRT_RP/raw_data`, where `<data-root>` is the default `data/`
 directory or the path supplied with `--data-root`.
 
+## Optional: build the HILIC dataset
+
+The RepoRT tables hold both reversed-phase (RP) and hydrophilic interaction
+liquid chromatography (HILIC) data. The pipeline above curates the RP subset.
+The downloader writes the HILIC subset next to it, but that subset is not part
+of the article's dataset. `prepare_hilic.py` curates it with the same rules
+and produces the same kind of cross-validation folds and ChromaGRT assets:
+
+```bash
+conda run --no-capture-output -n chromagrt \
+  python -m src.RepoRT_data_processing.prepare_hilic \
+  --data-root /path/to/data
+```
+
+That command:
+
+- Downloads RepoRT at the same revision as the RP pipeline and keeps its HILIC subset.
+- Preprocesses retention times, column metadata and gradient programs, and applies the
+  article's curation rules. The SMRT filter is switched off, because SMRT is an RP dataset.
+- Adds the Tanaka block and retrieves the molecular descriptors.
+- Expresses the HILIC dataset in the RP condition vocabulary, as described below.
+- Generates the fold tables and the ChromaGRT split tables under
+  `<data-root>/benchmarks/article-v1/hilic`.
+
+The HILIC dataset is expressed in the RP condition vocabulary on purpose. The
+condition vector ChromaGRT builds is the table's condition columns, taken in
+order, so its width depends on the data: the RP subset carries six USP column
+codes and the HILIC subset carries four different ones. Writing the HILIC
+dataset in the RP vocabulary gives both the same 114-dimensional condition
+vector, which is what allows a checkpoint trained on RP to be loaded into a
+HILIC run. Only the six `column.usp.code_*` columns are affected; the eluent
+composition, static column geometry, Tanaka and gradient blocks are carried
+over unchanged.
+
 ## Train models
 
 The following commands work once the data are available, whether they came
@@ -168,6 +202,44 @@ src/benchmarks/shared_folds/scripts/run_chromagrt_kfold.sh \
 
 The complete workflow and the input-ablations are documented
 in [the shared-fold benchmark README](src/benchmarks/shared_folds/README.md).
+
+#### HILIC: from scratch, and with transfer learning
+
+The HILIC dataset is trained with the same hyperparameters as the RP data.
+From scratch, over the 10 folds:
+
+```bash
+REPORT_MOLDESC_PATH="$DATA_ROOT/complete_moldesc_hilic.tsv" \
+src/benchmarks/shared_folds/scripts/run_chromagrt_kfold.sh \
+  "$DATA_ROOT/benchmarks/article-v1/hilic" \
+  --condition-normalization standard \
+  --dropout 0.05
+```
+
+To start from a finished run instead of from scratch, pass that run's results
+root as `--pretrained-weights`. The fold with the lowest validation MAE is
+selected automatically, so the source weights are chosen on validation data and
+never on the test metrics:
+
+```bash
+REPORT_MOLDESC_PATH="$DATA_ROOT/complete_moldesc_hilic.tsv" \
+CHROMAGRT_SHARED_RESULTS_ROOT=logs/benchmarks/chromagrt_hilic_transfer \
+src/benchmarks/shared_folds/scripts/run_chromagrt_kfold.sh \
+  "$DATA_ROOT/benchmarks/article-v1/hilic" \
+  --condition-normalization standard \
+  --dropout 0.05 \
+  --pretrained-weights logs/benchmarks/shared_folds/chromagrt_ccscen_standard_kfold_20261120 \
+  --lr-pretrained 5e-6
+```
+
+`--lr-pretrained` is the learning rate for the tensors that came from the
+checkpoint, and the base `--lr` applies to anything the checkpoint did not
+contain. The checkpoint must match the architecture of the new run exactly: a
+run whose condition vocabulary differs from the source run's raises, instead of
+quietly leaving part of the model randomly initialised.
+
+Both options are also available as environment variables,
+`CHROMAGRT_PRETRAINED_WEIGHTS` and `CHROMAGRT_LR_PRETRAINED`.
 
 ### GraphormerRT
 
