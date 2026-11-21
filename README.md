@@ -238,6 +238,15 @@ contain. The checkpoint must match the architecture of the new run exactly: a
 run whose condition vocabulary differs from the source run's raises, instead of
 quietly leaving part of the model randomly initialised.
 
+The condition normalization mode must also match the source run's. The two
+modes do not merely rescale the same inputs — `standard` standardizes the
+condition columns with the training fold's statistics, while `deterministic`
+encodes them with fixed divisors and binary presence variables — so a
+checkpoint trained under one of them expects inputs the other does not produce.
+A run transferred from the condition-shift configuration therefore needs
+`--condition-normalization deterministic` together with its
+`--tanaka-block-dropout 0.5`.
+
 Both options are also available as environment variables,
 `CHROMAGRT_PRETRAINED_WEIGHTS` and `CHROMAGRT_LR_PRETRAINED`.
 
