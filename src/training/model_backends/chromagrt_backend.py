@@ -22,6 +22,10 @@ from src.training.model_backends.chromagrt_defaults import (
     MAX_DISTANCE,
 )
 from src.training.model_backends.chromagrt_model import ChromaGRTRegressor
+from src.training.model_backends.chromagrt_pretrained import (
+    load_pretrained_state_dict,
+    resolve_pretrained_checkpoint,
+)
 
 def _config_from_param_dict(param_dict):
     config = DEFAULT_CHROMAGRT_CONFIG.copy()
@@ -96,12 +100,34 @@ def train_chromagrt(train_df, val_df, param_dict, results_path, using_moldescs=F
         shuffle=False,
     )
 
+    # Transfer learning: resolve the checkpoint and record which tensors come
+    # from it. This happens before the model is built because the model copies
+    # the configuration, and the copied names are what let the optimiser give
+    # the pretrained tensors their own learning rate.
+    pretrained_state_dict = None
+    if config.get("pretrained_weights"):
+        checkpoint = resolve_pretrained_checkpoint(config["pretrained_weights"])
+        pretrained_state_dict = load_pretrained_state_dict(checkpoint)
+        config["lr_pretrained"] = float(
+            config["lr_pretrained"] if config["lr_pretrained"] is not None else config["lr"]
+        )
+        config["pretrained_parameter_names"] = tuple(pretrained_state_dict.keys())
+        param_dict["pretrained_weights"] = str(checkpoint)
+        param_dict["lr_pretrained"] = config["lr_pretrained"]
+        print(f"Transfer learning: initialising from {checkpoint}")
+
     model = ChromaGRTRegressor(
         condition_dim=len(condition_columns),
         target_mean=target_scaler.mean,
         target_std=target_scaler.std,
         config=config,
     )
+
+    # Transfer learning: the checkpoint must match this architecture exactly,
+    # so the load is strict and a mismatch fails loudly instead of silently
+    # leaving part of the model randomly initialised.
+    if pretrained_state_dict is not None:
+        model.load_state_dict(pretrained_state_dict, strict=True)
 
     es_cb = EarlyStopping(monitor=monitor_name, mode="min", patience=EARLY_STOPPING_PATIENCE)
     checkpoint_cb = ModelCheckpoint(

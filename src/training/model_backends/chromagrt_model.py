@@ -132,8 +132,24 @@ class ChromaGRTRegressor(pl.LightningModule):
         )
 
     def configure_optimizers(self):
+        # Transfer learning: the tensors that came from the checkpoint keep their
+        # own (smaller) learning rate, while any tensor the checkpoint did not
+        # contain is trained from scratch at the base learning rate.
+        pretrained_names = set(self.config.get("pretrained_parameter_names") or ())
+        pretrained_params = []
+        new_params = []
+        for name, parameter in self.named_parameters():
+            if name in pretrained_names:
+                pretrained_params.append(parameter)
+            else:
+                new_params.append(parameter)
+        param_groups = []
+        if pretrained_params:
+            param_groups.append({"params": pretrained_params, "lr": self.config["lr_pretrained"]})
+        if new_params:
+            param_groups.append({"params": new_params, "lr": self.config["lr"]})
         optimizer = torch.optim.AdamW(
-            self.parameters(),
+            param_groups,
             lr=self.config["lr"],
             weight_decay=WEIGHT_DECAY,
         )
